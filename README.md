@@ -1,1 +1,1 @@
-# bariliprime_api_v.1.0
+# bariliprime-api-v1
