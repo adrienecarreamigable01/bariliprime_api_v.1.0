@@ -17,6 +17,39 @@
             $this->load->model('BorrowerModel','borrowermodel');
         }
 
+        public function count(){
+            try{
+                $sql = "SELECT 
+                        count(borrower.borrower_id) as total
+                    FROM borrower
+                    LEFT JOIN borrower_contact ON borrower.borrower_id = borrower_contact.borrower_id
+                    LEFT JOIN borrower_details ON borrower.borrower_id = borrower_details.borrower_id 
+                    LEFT JOIN district ON district.district_id = borrower.district_id 
+                    WHERE 1";
+
+                    if(!empty($_GET['is_active'])){
+                        $is_active = $_GET['is_active'];
+                        $sql .= " AND borrower.is_active = {$is_active}";
+                    }
+
+                    $result = $this->db->query($sql)->result();
+
+                    $this->res = array(
+                        'isError' => false,
+                        'date'    => date("Y-m-d"),  
+                        'data'    => !empty($result) ? $result[0]->total : 0,
+                    );
+
+            }catch(Exception $e) {
+                $this->res = array(
+                    'isError' => true,
+                    'message'   => $e->getMessage(),
+                    'date'    => date("Y-m-d"),  
+                );
+            }
+            
+            $this->displayJSON($this->res);
+        }
         public function all(){
             try{
                 $sql = "SELECT 
@@ -78,6 +111,62 @@
                 );
             }
             
+            $this->displayJSON($this->res);
+        }
+        public function balance(){
+
+            $total_loan = 0;
+
+            if( R ){
+                $this->res = array(
+                    'isError' => false,
+                    'date'    => date("Y-m-d"),  
+                    'data'    => 0,
+                );
+            }else{
+                $borrower_id = $_POST['borrower_id'];
+                $sql = "SELECT loan.principal_amount,
+                    (SELECT 
+                    CASE WHEN SUM(loan_add_capital.amount) > 0 
+                        THEN SUM(loan_add_capital.amount) 
+                    ELSE 0 END FROM loan_add_capital 
+                    WHERE loan_add_capital.status_id = 1 
+                    AND loan_add_capital.is_released = 1 
+                    AND loan_add_capital.is_void = 0 
+                    AND loan_add_capital.loan_id = loan.loan_id) as added_capital,
+                    (SELECT 
+                            CASE WHEN SUM(payment.amount) > 0 
+                            THEN SUM(payment.amount) 
+                            ELSE 0 END FROM payment 
+                            WHERE payment.loan_id = loan.loan_id AND payment.payment_type_id IN(2,4) AND payment.is_void = 0 AND payment.status = 1
+                    ) as total_payment
+                    FROM loan
+                    WHERE loan.borrower_id = {$borrower_id} AND loan.status_id = 1 AND loan.is_released = 1 AND loan.is_active = 1";
+
+                $result = $this->db->query($sql)->result();
+
+                if(!empty($result)){
+
+                    foreach ($result as $key => $value) {
+                        $total_loan += ($value->principal_amount + $value->added_capital) - $value->total_payment;
+                    }
+
+                    $this->res = array(
+                        'isError' => false,
+                        'date'    => date("Y-m-d"),  
+                        'data'    => $total_loan,
+                    );
+
+                }else{
+                    $this->res = array(
+                        'isError' => false,
+                        'date'    => date("Y-m-d"),  
+                        'data'    => 0,
+                    );
+
+                }
+            }
+
             $this->displayJSON($this->res);
         }
         public function info(){
