@@ -47,7 +47,7 @@
                     $this->res = array(
                         'isError'   => false,
                         'message'   => "Success",
-                        'isDone'    => $this->checkIfDone($user_id,$date),
+                        'isDone'    => $this->checkIfDone($date,$user_id),
                         'total'     => $this->getTotal($data)['total'],
                         'in'        => $this->getTotal($data)['cashin'],
                         'out'        => $this->getTotal($data)['cashout'],
@@ -100,7 +100,8 @@
                 try{
 
                     $sql = "SELECT * FROM cashier_daily_transaction
-                            WHERE DATE_FORMAT(cashier_daily_transaction.date,'%Y-%m-%d') = '{$date}' AND cashier_daily_transaction.assign_id = '{$assign_id}'";
+                            WHERE DATE_FORMAT(cashier_daily_transaction.date,'%Y-%m-%d') = '{$date}' 
+                            AND cashier_daily_transaction.assign_id = '{$assign_id}'";
                     $data =   $this->db->query($sql)->num_rows();
                     if( $data > 0 ){
                         return true;
@@ -227,6 +228,118 @@
             }
 
             $this->displayJSON($this->res);
+        }
+        public function return(){
+            
+            $cashout = $this->db->escape($_POST['cashout']);
+            $cashin  = $this->db->escape($_POST['cashin']);
+            $total   = $this->db->escape($_POST['total']);
+
+            if(empty($_POST['date'])){
+                $this->res = array(
+                    'isError'   => true,
+                    'date'      => date("Y-m-d"),
+                    'message'   => 'Please select a date',
+                );
+            }
+            else if(empty($_POST['user_id'])){
+                $this->res = array(
+                    'isError'   => true,
+                    'date'      => date("Y-m-d"),
+                    'message'   => 'Please select a user',
+                );
+            }
+            else if(empty($_POST['transact_by'])){
+                $this->res = array(
+                    'isError'   => true,
+                    'date'      => date("Y-m-d"),
+                    'message'   => 'Please select a user transact',
+                );
+            }
+            else if(empty($cashin)){
+                $this->res = array(
+                    'isError'   => true,
+                    'date'      => date("Y-m-d"),
+                    'message'   => 'Please indicate cashin amount',
+                );
+            }
+            else if(empty($cashout)){
+                $this->res = array(
+                    'isError'   => true,
+                    'date'      => date("Y-m-d"),
+                    'message'   => 'Please indicate cashout amount',
+                );
+            }
+            else if(empty($total)){
+                $this->res = array(
+                    'isError'   => true,
+                    'date'      => date("Y-m-d"),
+                    'message'   => 'Please indicate total amount',
+                );
+            }
+            else if(empty($_POST['description'])){
+                $this->res = array(
+                    'isError'   => true,
+                    'date'      => date("Y-m-d"),
+                    'message'   => 'Please indicate description',
+                );
+            }
+            else if(empty($_POST['assign_id'])){
+                $this->res = array(
+                    'isError'   => true,
+                    'date'      => date("Y-m-d"),
+                    'message'   => 'Please indicate assign cashier id',
+                );
+            }
+            else{
+                $date       = date("Y-m-d",strtotime($_POST['date']));
+
+                try{
+
+                    $l = $this->input->post("logs");
+                    $payload = array(
+                        'user_id'       => $_POST['user_id'],    
+                        'cashin'        => $_POST['cashin'],    
+                        'cashout'       => $_POST['cashout'],    
+                        'total'         => $_POST['total'],    
+                        'description'   => $_POST['description'],    
+                        'assign_id'     => $_POST['assign_id'],    
+                        'date'          => $date,    
+                        'transact_by'   => $_POST['transact_by'],    
+                    );
+
+                    $data = $this->db->insert("cashier_daily_transaction",$payload);
+
+                    if($data > 0){
+                        // $date = date("Y-m-d H:i:s");
+                        // $amount = $this->input->post("amount");
+                        // $name = $_SESSION['name'];
+                        $this->res = array(
+                            'isError'   => false,
+                            'data'      => $payload,
+                            'date'      => date("Y-m-d"),
+                            'message'   => 'Successfully close the cashiers vault for the date of '.$date,
+                        );
+
+                    }else{
+                        $this->res = array(
+                            'isError'   => true,
+                            'date'      => date("Y-m-d"),
+                            'message'   => 'Eror inserting data',
+                        );
+                    }
+                }
+                catch(Exception $e) {
+                    $this->res = array(
+                        'isError'   => true,
+                        'date'      => date("Y-m-d"),
+                        'message'   => $e->getMessage(),
+                    );
+                }
+            }
+
+            $this->displayJSON($this->res);
+            
         }
         public function insert_logs($payload){
             return $this->db->insert("cashier_vault_logs",$payload);

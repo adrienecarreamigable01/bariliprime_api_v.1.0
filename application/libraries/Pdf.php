@@ -54,6 +54,31 @@ class Pdf extends DOMPDF
         $this->load_html($html);
         $this->render();
         $this->stream($name."-PDS.pdf", array('Attachment'=> 0));
+	}
+	public function load_view4_portrait($name,$view, $data = array())
+    {   
+        $this->set_option('isRemoteEnabled', TRUE);
+        $this->set_option('isHtml5ParserEnabled', TRUE);
+        $this->setPaper('legal', 'landscape');
+        $html = $this->ci()->load->view($view, $data, TRUE);
+        $this->load_html($html);
+        $this->render();
+        $this->stream($name.".pdf", array('Attachment'=> 0));
+    }
+	public function load_view5_portrait($name,$view, $data = array())
+    {   
+		
+		// $customPaper = array(0, 0, 147.40, 209.76);
+		// $customPaper = array(0,0,279,300);
+		$customPaper = array(0,0,279,368);
+		// $dompdf->set_paper($customPaper);
+		$this->setPaper($customPaper);
+		// $this->setPaper('Continuous', 'portrait');
+		// $this->setPaper('Continuous', 'portrait');
+        $html = $this->ci()->load->view($view, $data, TRUE);
+        $this->load_html($html);
+        $this->render();
+        $this->stream($name.".pdf", array('Attachment'=> 0));
     }
 }
 ?>

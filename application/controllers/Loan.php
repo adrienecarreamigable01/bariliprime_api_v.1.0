@@ -17,12 +17,22 @@
             $this->load->model('BorrowerModel','borrowermodel');
         }
         public function all(){
+
   
             try{
 
 
                 $sql = "SELECT loan.loan_id, 
                         district.name as district,
+                        borrower.lastname,
+                        borrower.firstname,
+                        borrower.middlename,
+                        borrower.image,
+                        borrower_details.birthdate,
+                        borrower_details.gender,
+                        borrower_details.present_address,
+                        card_status.card_status,
+                        card_status.textColor,
                         CONCAT(borrower.lastname,' ,',borrower.firstname,' ',borrower.middlename) as borrower,
                         loan_product.name as loan_product,
                         loan.borrower_id, 
@@ -34,7 +44,7 @@
                             CASE WHEN SUM(payment.amount) > 0 
                                 THEN SUM(payment.amount) 
                                 ELSE 0 END FROM payment 
-                                WHERE payment.loan_id = loan.loan_id AND payment.payment_type_id = 2) as `total_paid`,
+                                WHERE payment.status = 1 AND payment.loan_id = loan.loan_id AND payment.payment_type_id IN(2,3,5,6,7)) as `total_paid`,
                         (SELECT 
                             CASE WHEN SUM(loan_add_capital.amount) > 0 
                                 THEN SUM(loan_add_capital.amount) 
@@ -79,8 +89,10 @@
                         LEFT JOIN loan_product ON loan_product.loan_product_id = loan.loan_product_id
                         LEFT JOIN borrower ON loan.borrower_id = borrower.borrower_id
                         LEFT JOIN district ON district.district_id = borrower.district_id
+                        LEFT JOIN borrower_details 	ON borrower_details.borrower_id = borrower.borrower_id  
+                        LEFT JOIN card_status 	ON card_status.card_status_id  = borrower_details.gsis  
                         LEFT JOIN status 		ON status.status_id = loan.status_id
-                        WHERE loan.is_active = 1 ";
+                        WHERE loan.is_active = 1";
 
                     if(!empty($_GET['status_id'])){
                         $status = $_GET['status_id'];
@@ -111,7 +123,93 @@
                                   OR status.name LIKE '%{$item}%' ";
                     }
 
-                    $sql .= " ORDER BY borrower.borrower_id ASC";
+                    if( !empty($_GET['status_id']) && !empty($_GET['is_released']) ){
+                        $status = $_GET['status_id'];
+                        $is_released = $_GET['is_released'];
+                        if( $status == 1 && $is_released == 1){
+                            $sql .= " ORDER BY loan.released_date DESC";
+                        }
+                        else if( $status == 6){
+                            $sql .= " ORDER BY loan.void_date DESC";
+                        }
+                        else{
+                            $sql .= " ORDER BY loan.date_added DESC";
+                        }
+                    }
+
+                    
+                    // print_r($sql);exit;
+                $result = $this->db->query($sql)->result();
+
+                $this->res = array(
+                    'isError' => false,
+                    'date'    => date("Y-m-d"),  
+                    'data'    => $result,
+                );
+            }catch(Exception $e) {
+                $this->res = array(
+                    'isError' => true,
+                    'message'   => $e->getMessage(),
+                    'date'    => date("Y-m-d"),  
+                );
+            }
+
+            $this->displayJSON($this->res);
+        }
+        public function toInsurance(){
+  
+            try{
+
+                $sql = "SELECT loan.loan_id, 
+                        district.name as district,
+						borrower.borrower_id as bid,
+                        borrower.lastname,
+                        borrower.firstname,
+                        borrower.middlename,
+                        borrower_details.birthdate,
+                        borrower_details.gender,
+                        borrower_details.present_address,
+                        CONCAT(borrower.lastname,' ,',borrower.firstname,' ',borrower.middlename) as borrower,
+                        loan.borrower_id, 
+                        SUM(loan.principal_amount) as totalAmount,
+                        (SELECT 
+                            CASE WHEN SUM(payment.amount) > 0 
+                             	   THEN SUM(payment.amount) 
+                                ELSE 0 END FROM payment 
+								LEFT JOIN loan ON loan.loan_id = payment.loan_id
+                                WHERE payment.status = 1 
+								AND payment.payment_type_id IN(2,4,5,6,7) 
+								AND payment.borrower_id = bid
+								AND loan.is_active = 1 AND loan.is_released = 1 AND loan.status_id = 1
+						) as `total_paid`,
+                        (SELECT 
+                            CASE WHEN SUM(loan_add_capital.amount) > 0 
+                                THEN SUM(loan_add_capital.amount) 
+                            ELSE 0 END FROM loan_add_capital 
+							LEFT JOIN loan ON loan.loan_id = loan_add_capital.loan_id
+                            WHERE loan_add_capital.status_id = 1 
+                            AND loan_add_capital.is_released = 1 
+                            AND loan_add_capital.is_void = 0 
+                            AND loan.borrower_id = borrower.borrower_id
+                        ) as `added_capital`
+                        -- loan.principal_amount - total_paid as balance, 
+                        FROM loan 
+                        LEFT JOIN loan_product ON loan_product.loan_product_id = loan.loan_product_id
+                        LEFT JOIN borrower ON loan.borrower_id = borrower.borrower_id
+                        LEFT JOIN district ON district.district_id = borrower.district_id
+                        LEFT JOIN borrower_details 	ON borrower_details.borrower_id = borrower.borrower_id  
+                        LEFT JOIN status 		ON status.status_id = loan.status_id
+						WHERE loan.is_active = 1 AND loan.is_released = 1 AND loan.status_id = 1 AND borrower_details.hasInsured = 1 AND loan.loan_product_id IN(1,2,6,7,12,9)";
+						
+						if(!empty($_GET['district'])){
+							$district = $_GET['district'];
+							$sql .= " AND borrower.district_id = {$district}";
+						}
+				
+						$sql .=" GROUP BY borrower.borrower_id
+								ORDER BY loan.released_date DESC";
+
+               
                     // print_r($sql);exit;
                 $result = $this->db->query($sql)->result();
 
@@ -174,6 +272,106 @@
 
             $this->displayJSON($this->res);
         }
+        public function info(){
+            
+            if(empty($_GET['loan_id'])){
+                $this->res = array(
+                    'isError' => true,
+                    'message'   => "Empty or null loan id",
+                    'date'    => date("Y-m-d"),  
+                );
+            }else{
+                try{
+                    $loan_id = $_GET['loan_id']; 
+                    $sql = "SELECT loan.loan_id,
+                            loan.loan_id as loanid,
+                            (SELECT 
+                                CASE WHEN SUM(payment.amount) > 0 
+                                    THEN SUM(payment.amount) 
+                                    ELSE 0 END FROM payment 
+                                    WHERE payment.loan_id = loan.loan_id AND payment.payment_type_id IN(2,4) AND payment.is_void = 0 AND payment.status = 1) as `total_paid`,
+                            (SELECT 
+                                CASE WHEN SUM(loan_add_capital.amount) > 0 
+                                    THEN SUM(loan_add_capital.amount) 
+                                ELSE 0 END FROM loan_add_capital 
+                                WHERE loan_add_capital.status_id = 1 
+                                AND loan_add_capital.is_released = 1 
+                                AND loan_add_capital.is_void = 0 
+                                AND loan_add_capital.loan_id = loanid
+                            ) as `added_capital`,
+                            loan.transact_by,
+                            loan.borrower_id,
+                            loan.loan_type,
+                            loan.interest_amount,
+                            loan.loan_product_id,
+                            loan.deficit_amounts,
+                            loan.borrower_id,
+                            loan.principal_amount,
+                            loan.released_date,
+                            loan.interest,
+                            loan.is_reloan,
+                        loan.term,
+                        loan.date_start,
+                        loan.note,
+                        loan.description,
+                        loan.due_date,
+                        loan.released_amount,
+                        loan.loan_category_id,
+                        loan.interest,
+                        loan.processing_fee,
+                        loan.total_amount,
+                        loan.reloan_from,
+                        loan.monthly_payment,
+                        loan.released_date,
+                        loan.is_released,
+                        loan.is_reconstruct,
+                        loan_product.name as loan_product,
+                        status.status_id,
+                        status.name as status,
+                        status.color,
+                        CONCAT(borrower.lastname,',',borrower.firstname,' ',borrower.middlename) as Name,
+                        borrower.firstname,borrower.lastname,
+                        borrower.middlename,borrower.image,
+                        borrower_contact.mobile,
+                        borrower_contact.telephone,
+                        borrower_contact.email,
+                        borrower_details.gender,
+                        borrower_details.birthdate,
+                        borrower_details.present_address,
+                        borrower_details.position,
+                        borrower_details.id_name,
+                        borrower_details.id_number,
+                        district.name as 'district_name',
+                        (loan.total_amount - (SELECT SUM(amount) as total FROM payment WHERE payment.loan_id = loan.loan_id AND payment.is_void = 0 AND payment.status = 1 AND payment.payment_type_id IN(2,3,4))) as balance
+                    FROM loan
+                    LEFT JOIN borrower 			ON borrower.borrower_id 		= loan.borrower_id
+                    LEFT JOIN borrower_contact 	ON borrower_contact.borrower_id = borrower.borrower_id
+                    LEFT JOIN borrower_details 	ON borrower_details.borrower_id = borrower.borrower_id
+                    LEFT JOIN district 		   	ON district.district_id 		= borrower.district_id
+                    LEFT JOIN loan_product 		ON loan_product.loan_product_id = loan.loan_product_id
+                    LEFT JOIN status 			ON status.status_id 			= loan.status_id
+                    WHERE loan.loan_id = '{$loan_id}'";
+                    $data = $this->db->query($sql)->result();
+                    
+                    $this->res = array(
+                        'isError' => false,
+                        'message' => "success",
+                        'data'    =>$data,
+                        'date'    => date("Y-m-d"),  
+                    );
+
+                }catch(Exception $e) {
+                    $this->res = array(
+                        'isError' => true,
+                        'message'   => $e->getMessage(),
+                        'date'    => date("Y-m-d"),  
+                    );
+                }
+            }
+
+            $this->displayJSON($this->res);
+			
+		}
         public function get_single_loan($loan_id){
 			$sql = "SELECT loan.loan_id,
 							loan.loan_id as loanid,
@@ -245,6 +443,166 @@
 					WHERE loan.loan_id = $loan_id";
 			$data = $this->db->query($sql)->result();
 			return $data;
+		}
+        public function get_single_loan_by_product(){
+            $borrower_id = $_GET['id'];
+            $loan_product = $_GET['loan_product'];
+			$sql = "SELECT loan.loan_id,
+							loan.loan_id as loanid,
+							(SELECT 
+								CASE WHEN SUM(payment.amount) > 0 
+									THEN SUM(payment.amount) 
+									ELSE 0 END FROM payment 
+									WHERE payment.loan_id = loan.loan_id AND payment.payment_type_id IN(2,4) AND payment.is_void = 0 AND payment.status = 1) as `total_paid`,
+							(SELECT 
+								CASE WHEN SUM(loan_add_capital.amount) > 0 
+									THEN SUM(loan_add_capital.amount) 
+								ELSE 0 END FROM loan_add_capital 
+								WHERE loan_add_capital.status_id = 1 
+								AND loan_add_capital.is_released = 1 
+								AND loan_add_capital.is_void = 0 
+								AND loan_add_capital.loan_id = loanid
+							) as `added_capital`,
+							loan.transact_by,
+							loan.borrower_id,
+							loan.loan_type,
+							loan.interest_amount,
+							loan.loan_product_id,
+							loan.deficit_amounts,
+							loan.borrower_id,
+							loan.principal_amount,
+							loan.released_date,
+							loan.interest,
+							loan.is_reloan,
+						   loan.term,
+						   loan.date_start,
+						   loan.note,
+						   loan.description,
+						   loan.due_date,
+						   loan.released_amount,
+						   loan.loan_category_id,
+						   loan.interest,
+						   loan.processing_fee,
+						   loan.total_amount,
+						   loan.reloan_from,
+						   loan.monthly_payment,
+						   loan.released_date,
+						   loan.is_released,
+						   loan.is_reconstruct,
+						   loan_product.name as loan_product,
+						   status.status_id,
+						   status.name as status,
+						   status.color,
+						   CONCAT(borrower.lastname,',',borrower.firstname,' ',borrower.middlename) as Name,
+						   borrower.firstname,borrower.lastname,
+						   borrower.middlename,borrower.image,
+						   borrower_contact.mobile,
+						   borrower_contact.telephone,
+						   borrower_contact.email,
+						   borrower_details.gender,
+						   borrower_details.birthdate,
+						   borrower_details.present_address,
+						   borrower_details.position,
+						   borrower_details.id_name,
+						   borrower_details.id_number,
+						   district.name as 'district_name',
+						   (loan.total_amount - (SELECT SUM(amount) as total FROM payment WHERE payment.loan_id = loan.loan_id AND payment.is_void = 0 AND payment.status = 1 AND payment.payment_type_id IN(2,3,4))) as balance
+					FROM loan
+					LEFT JOIN borrower 			ON borrower.borrower_id 		= loan.borrower_id
+					LEFT JOIN borrower_contact 	ON borrower_contact.borrower_id = borrower.borrower_id
+					LEFT JOIN borrower_details 	ON borrower_details.borrower_id = borrower.borrower_id
+					LEFT JOIN district 		   	ON district.district_id 		= borrower.district_id
+					LEFT JOIN loan_product 		ON loan_product.loan_product_id = loan.loan_product_id
+					LEFT JOIN status 			ON status.status_id 			= loan.status_id
+                    WHERE loan.loan_product_id IN($loan_product) AND loan.borrower_id = '{$borrower_id}'";
+			$data = $this->db->query($sql)->result();
+            $this->res = array(
+                'isError' => false,
+                'message'   => "success",
+                'data'      => $data,
+                'date'    => date("Y-m-d"),  
+            );
+            $this->displayJSON($this->res);
+		}
+        public function get_single_loan_by_group(){
+            $borrower_id = $_GET['id'];
+            $loan_group = $_GET['loan_group'];
+			$sql = "SELECT loan.loan_id,
+							loan.loan_id as loanid,
+							(SELECT 
+								CASE WHEN SUM(payment.amount) > 0 
+									THEN SUM(payment.amount) 
+									ELSE 0 END FROM payment 
+									WHERE payment.loan_id = loan.loan_id AND payment.payment_type_id IN(2,4) AND payment.is_void = 0 AND payment.status = 1) as `total_paid`,
+							(SELECT 
+								CASE WHEN SUM(loan_add_capital.amount) > 0 
+									THEN SUM(loan_add_capital.amount) 
+								ELSE 0 END FROM loan_add_capital 
+								WHERE loan_add_capital.status_id = 1 
+								AND loan_add_capital.is_released = 1 
+								AND loan_add_capital.is_void = 0 
+								AND loan_add_capital.loan_id = loanid
+							) as `added_capital`,
+							loan.transact_by,
+							loan.borrower_id,
+							loan.loan_type,
+							loan.interest_amount,
+							loan.loan_product_id,
+							loan.deficit_amounts,
+							loan.borrower_id,
+							loan.principal_amount,
+							loan.released_date,
+							loan.interest,
+							loan.is_reloan,
+						   loan.term,
+						   loan.date_start,
+						   loan.note,
+						   loan.description,
+						   loan.due_date,
+						   loan.released_amount,
+						   loan.loan_category_id,
+						   loan.interest,
+						   loan.processing_fee,
+						   loan.total_amount,
+						   loan.reloan_from,
+						   loan.monthly_payment,
+						   loan.released_date,
+						   loan.is_released,
+						   loan.is_reconstruct,
+						   loan_product.name as loan_product,
+						   status.status_id,
+						   status.name as status,
+						   status.color,
+						   CONCAT(borrower.lastname,',',borrower.firstname,' ',borrower.middlename) as Name,
+						   borrower.firstname,borrower.lastname,
+						   borrower.middlename,borrower.image,
+						   borrower_contact.mobile,
+						   borrower_contact.telephone,
+						   borrower_contact.email,
+						   borrower_details.gender,
+						   borrower_details.birthdate,
+						   borrower_details.present_address,
+						   borrower_details.position,
+						   borrower_details.id_name,
+						   borrower_details.id_number,
+						   district.name as 'district_name',
+						   (loan.total_amount - (SELECT SUM(amount) as total FROM payment WHERE payment.loan_id = loan.loan_id AND payment.is_void = 0 AND payment.status = 1 AND payment.payment_type_id IN(2,3,4))) as balance
+					FROM loan
+					LEFT JOIN borrower 			ON borrower.borrower_id 		= loan.borrower_id
+					LEFT JOIN borrower_contact 	ON borrower_contact.borrower_id = borrower.borrower_id
+					LEFT JOIN borrower_details 	ON borrower_details.borrower_id = borrower.borrower_id
+					LEFT JOIN district 		   	ON district.district_id 		= borrower.district_id
+					LEFT JOIN loan_product 		ON loan_product.loan_product_id = loan.loan_product_id
+					LEFT JOIN status 			ON status.status_id 			= loan.status_id
+                    WHERE loan.loan_group IN($loan_group) AND loan.borrower_id = '{$borrower_id}'";
+			$data = $this->db->query($sql)->result();
+            $this->res = array(
+                'isError' => false,
+                'message'   => "success",
+                'data'      => $data,
+                'date'    => date("Y-m-d"),  
+            );
+            $this->displayJSON($this->res);
 		}
         public function approve(){
 
@@ -569,6 +927,96 @@
                         $this->res = array(
                             'isError' => true,
                             'message'   => "Error Disapprove Loan",
+                            'date'    => date("Y-m-d"),  
+                        );
+                        // return false;exit;
+                    }
+                }catch(Exception $e){
+                    $this->res = array(
+                        'isError' => true,
+                        'message'   => $e->getMessage(),
+                        'date'    => date("Y-m-d"),  
+                    );
+                }
+
+            }
+			$this->displayJSON($this->res);
+        }
+        public function update()
+		{
+			$arrayTransaction = array();
+            $loan_id = $this->input->post('loan_id');
+            $due_date = $this->input->post('due_date');
+            $name = $this->input->post('name');
+            if(empty($loan_id)){
+                
+                $this->res = array(
+                    'isError' => true,
+                    'message'   => "Empty Loan Id",
+                    'date'    => date("Y-m-d"),  
+                );
+            }
+            else if(empty($due_date)){
+                
+                $this->res = array(
+                    'isError' => true,
+                    'message'   => "Empty due date",
+                    'date'    => date("Y-m-d"),  
+                );
+            }
+            else if(empty($name)){
+                
+                $this->res = array(
+                    'isError' => true,
+                    'message'   => "Empty name",
+                    'date'    => date("Y-m-d"),  
+                );
+            }
+            else{
+
+                try{
+                    /* update current loan */
+                    $update_loan = array(
+                        'due_date' => $due_date,
+                    );
+                    $this->db->where('loan_id',$loan_id);
+                    // $update_loan_res = $this->db->update('loan',$update_loan);
+    
+                    $sql1 = $this->db->set($update_loan)->get_compiled_update('loan');
+                    array_push($arrayTransaction,$sql1);
+                        
+    
+                    $single_loan = $this->get_single_loan($loan_id)[0];
+                    $insert_logs = array(
+                        'logs' => "#{$loan_id} {$single_loan->loan_product} Loan has been updated for the date of ".date("Y-m-d H:i:s").' by '. $name,
+                        'loan_id' => $loan_id,
+                        'borrower_id' => $single_loan->borrower_id,
+                    );
+                    
+                    $logs_res =$this->db->set($insert_logs)->get_compiled_insert('logs');
+                    array_push($arrayTransaction,$logs_res);
+    
+                
+                    if(!empty($arrayTransaction)){
+                        $result = array_filter($arrayTransaction);   
+                        $res = $this->mysqlTQ($result);
+                        if($res){
+                            $this->res = array(
+                                'isError' => false,
+                                'message'   => "Successfuly Updated Loan",
+                                'date'    => date("Y-m-d"),  
+                            );
+                        }else{
+                            $this->res = array(
+                                'isError' => true,
+                                'message'   => "Error Updated Loan",
+                                'date'    => date("Y-m-d"),  
+                            );
+                        }
+                    }else{
+                        $this->res = array(
+                            'isError' => true,
+                            'message'   => "Error Updated Loan",
                             'date'    => date("Y-m-d"),  
                         );
                         // return false;exit;

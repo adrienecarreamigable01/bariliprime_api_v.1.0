@@ -1,5 +1,19 @@
 <?php
     class BorrowerModel extends CI_Model{
+		public function getBorrowerSchedule($borrower_id){
+            $sql = "SELECT schedules.id,
+                            schedules.name as title,
+                            schedules.borrower_id,
+                            -- DATE_FORMAT(schedules.start,'%H:%i') as title,
+                            schedules.start,
+                            schedules.end,
+                            schedules.description,
+                            schedules.meridiem,
+                            schedules.status_id
+                    FROM schedules
+                    WHERE schedules.is_active = 1 AND schedules.borrower_id = {$borrower_id}";
+            return $this->db->query($sql)->result();
+        }
         public function proc_add_borrower($image='no-image.jpg'){
 			$borrower = array(
 				'firstname'  		=> $this->input->post('firstname'),
@@ -184,7 +198,14 @@
             }else{
                 return true;
             }
-        }
+		}
+		public function get_request(){
+			$sql = "SELECT borrower_requests.borrower_requests_id,borrower_requests.borrower_requests,borrower_requests.date,borrower_requests.borrower_id,borrower_requests.note,borrower_requests.status_id,CONCAT(borrower.lastname,' ,',borrower.firstname,' ',borrower.middlename) as name,status.name as 'status'
+					FROM borrower_requests 
+					LEFT JOIN borrower ON borrower.borrower_id = borrower_requests.borrower_id
+					LEFT JOIN status ON status.status_id = borrower_requests.status_id";
+			return $this->db->query($sql)->result();
+		}
         public function getAccountToSync(){
             $sql = "SELECT borrower_account.borrower_id FROM borrower_account ORDER BY borrower_account_id DESC LIMIT 1";
             return $this->db->query($sql)->result();

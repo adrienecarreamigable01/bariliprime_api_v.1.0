@@ -72,6 +72,7 @@
                         borrower_details.gross,
                         borrower_details.net,
                         borrower_details.others_id,
+                        borrower_details.hasInsured,
                         borrower_contact.borrower_contact_id,
                         borrower_contact.mobile,
                         borrower_contact.telephone,
@@ -86,6 +87,78 @@
                     if(!empty($_GET['is_active'])){
                         $is_active = $_GET['is_active'];
                         $sql .= " AND borrower.is_active = {$is_active}";
+                    }
+                    if(!empty($_GET['isInsured'])){
+                        $isInsured = $_GET['isInsured'];
+                        $sql .= " AND borrower_details.hasInsured = {$isInsured}";
+                    }
+
+                    if(!empty($_GET['item'])){
+                        $item = $_GET['item'];
+                        $sql .= " AND borrower.firstname LIKE '%{$item}%' 
+                                  OR borrower.lastname LIKE '%{$item}%'
+                                  OR borrower.middlename LIKE '%{$item}%'
+                                  OR district.name LIKE '%{$item}%' ";
+                    }
+
+                    $result = $this->db->query($sql)->result();
+                    $this->res = array(
+                        'isError' => false,
+                        'date'    => date("Y-m-d"),  
+                        'data'    => $result,
+                    );
+
+            }catch(Exception $e) {
+                $this->res = array(
+                    'isError' => true,
+                    'message'   => $e->getMessage(),
+                    'date'    => date("Y-m-d"),  
+                );
+            }
+            
+            $this->displayJSON($this->res);
+        }
+        public function toInsurance(){
+            try{
+                $sql = "SELECT 
+                        borrower.borrower_id,
+                        borrower.firstname,
+                        borrower.lastname,
+                        borrower.middlename,
+                        CONCAT(borrower.firstname,' ',borrower.lastname) as fullname,
+                        borrower.image,
+                        borrower.district_id,
+                        borrower.date_registered,
+                        borrower_details.borrower_details_id,
+                        borrower_details.gender	,
+                        borrower_details.birthdate,
+                        borrower_details.present_address,
+                        borrower_details.id_name,
+                        borrower_details.id_number,
+                        borrower_details.position,
+                        borrower_details.income,
+                        borrower_details.gross,
+                        borrower_details.net,
+                        borrower_details.others_id,
+                        borrower_details.hasInsured,
+                        borrower_contact.borrower_contact_id,
+                        borrower_contact.mobile,
+                        borrower_contact.telephone,
+                        borrower_contact.email,
+                        district.name as district
+                    FROM borrower
+                    LEFT JOIN borrower_contact ON borrower.borrower_id = borrower_contact.borrower_id
+                    LEFT JOIN borrower_details ON borrower.borrower_id = borrower_details.borrower_id 
+                    LEFT JOIN district ON district.district_id = borrower.district_id 
+                    WHERE 1";
+
+                    if(!empty($_GET['is_active'])){
+                        $is_active = $_GET['is_active'];
+                        $sql .= " AND borrower.is_active = {$is_active}";
+                    }
+                    if(!empty($_GET['isInsured'])){
+                        $isInsured = $_GET['isInsured'];
+                        $sql .= " AND borrower_details.hasInsured = {$isInsured}";
                     }
 
                     if(!empty($_GET['item'])){
@@ -117,54 +190,65 @@
 
             $total_loan = 0;
 
-            if( R ){
-                $this->res = array(
-                    'isError' => false,
-                    'date'    => date("Y-m-d"),  
-                    'data'    => 0,
-                );
-            }else{
-                $borrower_id = $_POST['borrower_id'];
-                $sql = "SELECT loan.principal_amount,
-                    (SELECT 
-                    CASE WHEN SUM(loan_add_capital.amount) > 0 
-                        THEN SUM(loan_add_capital.amount) 
-                    ELSE 0 END FROM loan_add_capital 
-                    WHERE loan_add_capital.status_id = 1 
-                    AND loan_add_capital.is_released = 1 
-                    AND loan_add_capital.is_void = 0 
-                    AND loan_add_capital.loan_id = loan.loan_id) as added_capital,
-                    (SELECT 
-                            CASE WHEN SUM(payment.amount) > 0 
-                            THEN SUM(payment.amount) 
-                            ELSE 0 END FROM payment 
-                            WHERE payment.loan_id = loan.loan_id AND payment.payment_type_id IN(2,4) AND payment.is_void = 0 AND payment.status = 1
-                    ) as total_payment
-                    FROM loan
-                    WHERE loan.borrower_id = {$borrower_id} AND loan.status_id = 1 AND loan.is_released = 1 AND loan.is_active = 1";
-
-                $result = $this->db->query($sql)->result();
-
-                if(!empty($result)){
-
-                    foreach ($result as $key => $value) {
-                        $total_loan += ($value->principal_amount + $value->added_capital) - $value->total_payment;
-                    }
-
+           try{
+                if( !isset($_POST['borrower_id']) ){
                     $this->res = array(
-                        'isError' => false,
+                        'isError' => true,
+                        'message' => 'Please Select a Borrower',
                         'date'    => date("Y-m-d"),  
-                        'data'    => $total_loan,
+                        'data'    => "",
                     );
-
                 }else{
-                    $this->res = array(
-                        'isError' => false,
-                        'date'    => date("Y-m-d"),  
-                        'data'    => 0,
-                    );
+                    $borrower_id = $_POST['borrower_id'];
+                    $sql = "SELECT loan.principal_amount,
+                        (SELECT 
+                        CASE WHEN SUM(loan_add_capital.amount) > 0 
+                            THEN SUM(loan_add_capital.amount) 
+                        ELSE 0 END FROM loan_add_capital 
+                        WHERE loan_add_capital.status_id = 1 
+                        AND loan_add_capital.is_released = 1 
+                        AND loan_add_capital.is_void = 0 
+                        AND loan_add_capital.loan_id = loan.loan_id) as added_capital,
+                        (SELECT 
+                                CASE WHEN SUM(payment.amount) > 0 
+                                THEN SUM(payment.amount) 
+                                ELSE 0 END FROM payment 
+                                WHERE payment.loan_id = loan.loan_id AND payment.payment_type_id IN(2,4) AND payment.is_void = 0 AND payment.status = 1
+                        ) as total_payment
+                        FROM loan
+                        WHERE loan.borrower_id = {$borrower_id} AND loan.status_id = 1 AND loan.is_released = 1 AND loan.is_active = 1";
 
+                    $result = $this->db->query($sql)->result();
+
+                    if(!empty($result)){
+
+                        foreach ($result as $key => $value) {
+                            $total_loan += ($value->principal_amount + $value->added_capital) - $value->total_payment;
+                        }
+
+                        $this->res = array(
+                            'isError' => false,
+                            'message' => 'Success',
+                            'date'    => date("Y-m-d"),  
+                            'data'    => $total_loan,
+                        );
+
+                    }else{
+                        $this->res = array(
+                            'isError' => false,
+                            'message' => 'Success',
+                            'date'    => date("Y-m-d"),  
+                            'data'    => 0,
+                        );
+
+                    }
                 }
+            }catch(Exception $e) {
+                $this->res = array(
+                    'isError' => true,
+                    'message'   => $e->getMessage(),
+                    'date'    => date("Y-m-d"),  
+                );
             }
 
             $this->displayJSON($this->res);
@@ -189,6 +273,9 @@
                             borrower.district_id,
                             borrower.date_registered,
                             borrower_details.borrower_details_id,
+                            borrower_details.atm_number,
+                            borrower_details.atm_name,
+                            borrower_details.gsis_number,
                             borrower_details.gender	,
                             borrower_details.birthdate,
                             borrower_details.present_address,
@@ -202,7 +289,7 @@
                             borrower_contact.borrower_contact_id,
                             borrower_contact.mobile,
                             borrower_contact.telephone,
-                            borrower_contact.email
+                            borrower_contact.email  
                         FROM borrower
                         LEFT JOIN borrower_contact ON borrower.borrower_id = borrower_contact.borrower_id
                         LEFT JOIN borrower_details ON borrower.borrower_id = borrower_details.borrower_id
@@ -225,6 +312,91 @@
             
             $this->displayJSON($this->res);
         }
+        // public function info(){
+        //     if(empty($_GET['id'])){
+        //         $this->res = array(
+        //             'isError' => true,
+        //             'message'   => "Empty Id",
+        //             'date'    => date("Y-m-d"),  
+        //         );
+        //     }else{
+        //         $id = $_GET['id'];
+        //         try{
+        //             $sql = "SELECT 
+        //                     borrower.borrower_id,
+        //                     borrower.firstname,
+        //                     borrower.lastname,
+        //                     borrower.middlename,
+        //                     CONCAT(borrower.firstname,' ',borrower.lastname) as fullname,
+        //                     borrower.image,
+        //                     borrower.district_id,
+        //                     borrower.date_registered,
+        //                     borrower_details.borrower_details_id,
+        //                     borrower_details.atm_number,
+        //                     borrower_details.atm_name,
+        //                     borrower_details.gender	,
+        //                     borrower_details.birthdate,
+        //                     borrower_details.present_address,
+        //                     borrower_details.id_name,
+        //                     borrower_details.id_number,
+        //                     borrower_details.position,
+        //                     borrower_details.income,
+        //                     borrower_details.gross,
+        //                     borrower_details.net,
+        //                     borrower_details.others_id,
+        //                     borrower_contact.borrower_contact_id,
+        //                     borrower_contact.mobile,
+        //                     borrower_contact.telephone,
+        //                     borrower_contact.email  
+        //                 FROM borrower
+        //                 LEFT JOIN borrower_contact ON borrower.borrower_id = borrower_contact.borrower_id
+        //                 LEFT JOIN borrower_details ON borrower.borrower_id = borrower_details.borrower_id
+        //                 WHERe borrower.borrower_id = '{$id}'";
+        //                 $result = $this->db->query($sql)->result();
+        //                 $this->res = array(
+        //                     'isError' => false,
+        //                     'date'    => date("Y-m-d"),  
+        //                     'data'    => $result,
+        //                 );
+        //         }catch(Exception $e) {
+        //             $this->res = array(
+        //                 'isError' => true,
+        //                 'message'   => $e->getMessage(),
+        //                 'date'    => date("Y-m-d"),  
+        //             );
+        //         }
+        //     }
+            
+            
+        //     $this->displayJSON($this->res);
+        // }
+        public function comaker($id)
+		{
+			$sql = "SELECT comaker.comaker_id,comaker.lastname,comaker.firstname,comaker.middlename,comaker.address,
+						comaker.mobile,comaker.landline,comaker.valid_id_no,comaker.date_issued,comaker.place_issued
+					FROM comaker
+					WHERE comaker.borrower_id = $id";
+            $data = $this->db->query($sql)->result();
+            $this->res = array(
+                'isError' => false,
+                'date'    => date("Y-m-d"),  
+                'data'    => $data,
+            );
+            $this->displayJSON($this->res); 
+		}
+		public function witness($id)
+		{
+			$sql = "SELECT  _witness.witness_id,_witness.lastname,_witness.firstname,_witness.middlename,_witness.address
+					FROM _witness
+					WHERE _witness.borrower_id = $id";
+			$data = $this->db->query($sql)->result();
+            $this->res = array(
+                'isError' => false,
+                'date'    => date("Y-m-d"),  
+                'data'    => $data,
+            );
+            $this->displayJSON($this->res);
+		}
         public function loan(){
   
             try{
@@ -477,20 +649,25 @@
 
             $this->displayJSON($this->res);
         }
+        public function district(){
+            try{
+                $sql = "SELECT * FROM district ORDER BY district_id";
+                $result =  $this->db->query($sql)->result();
+                $this->res = array(
+                    'isError' => false,
+                    'date'    => date("Y-m-d"),  
+                    'data'    => $result,
+                );
+            }catch(Exception $e) {
+                $this->res = array(
+                    'isError' => true,
+                    'message'   => $e->getMessage(),
+                    'date'    => date("Y-m-d"),  
+                );
+            }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+            $this->displayJSON($this->res);
+        }
         //display json format for response
         private function displayJSON($data){
             if(isset($_SERVER['HTTP_USER_AGENT']) && strstr($_SERVER['HTTP_USER_AGENT'],"MSIE")){
@@ -872,7 +1049,7 @@
                             'message'   => "Error activating account! Please contact IT",
                             'date'    => date("Y-m-d"),  
                         );
-                    }
+                    }   
                     
                 }catch(Exception $e) {
                     $this->res = array(
@@ -1109,6 +1286,400 @@
     
             $this->displayJSON($this->res);
             
+		}
+		public function get_schedule(){
+            $response = array();
+            // $borrower_id = 1;
+            $borrower_id = $this->input->post('borrower_id');
+            if(empty($borrower_id)){
+                $this->res  = array(
+                    'isError'  => true,
+                    'message'   => "Empty borrower id",
+                    'date'      => date("Y-m-d H:i:s")
+                );
+            }else{
+				$data = $this->borrowermodel->getBorrowerSchedule($borrower_id);
+                try{
+					$this->res  = array(
+						'isError'  => false,
+						'message'   => "Success",
+						'data'      => $data,
+						'date'      => date("Y-m-d H:i:s")
+					);
+				}catch(Exception $e) {
+					$this->res = array(
+						'isError' => true,
+						'message'   => $e->getMessage(),
+						'date'    => date("Y-m-d"),  
+					);
+				}
+			}
+			
+			$this->displayJSON($this->res);
+        }
+		public function get_request(){
+            $response = array();
+			try{
+				$data = $this->borrowermodel->get_request();
+				$this->res  = array(
+					'isError'  => false,
+					'message'   => "Success",
+					'data'      => $data,
+					'date'      => date("Y-m-d H:i:s")
+				);
+			}catch(Exception $e) {
+				$this->res = array(
+					'isError' => true,
+					'message'   => $e->getMessage(),
+					'date'    => date("Y-m-d"),  
+				);
+			}
+			
+			$this->displayJSON($this->res);
+        }
+		public function add_request(){
+			$response = array();
+
+			if(empty($_POST['borrower_requests'])){
+				$this->res = array(
+					'isError' => true,
+					'message'   => "Empty borrower_requests",
+					'date'    => date("Y-m-d"),  
+				);
+			}
+			else if(empty($_POST['borrower_id'])){
+				$this->res = array(
+					'isError' => true,
+					'message'   => "Empty borrower_id",
+					'date'    => date("Y-m-d"),  
+				);
+			}
+			else{
+				try{
+					$borrower_requests = $_POST['borrower_requests'];
+					$borrower_id 	  = $_POST['borrower_id'];
+					
+					$data = array(
+						'borrower_requests'  => $borrower_requests,
+						'date'					=> date("Y-m-d H:i:s"),
+						'borrower_id' 			=> $borrower_id,
+					);
+
+					$res = $this->db->insert("borrower_requests",$data);
+					if($res){
+						$this->res  = array(
+							'isError'  => false,
+							'message'   => "Success",
+							'data'      => $data,
+							'date'      => date("Y-m-d H:i:s")
+						);
+					}else{
+						$this->res = array(
+							'isError' => true,
+							'message'   => "Error",
+							'date'    => date("Y-m-d"),  
+						);
+					}
+				}catch(Exception $e) {
+					$this->res = array(
+						'isError' => true,
+						'message'   => $e->getMessage(),
+						'date'    => date("Y-m-d"),  
+					);
+				}
+			}
+
+			
+			
+			$this->displayJSON($this->res);
+        }
+		public function update_request(){
+			$response = array();
+
+			if(empty($_POST['borrower_requests_id'])){
+				$this->res = array(
+					'isError' => true,
+					'message'   => "Empty borrower_requests_id",
+					'date'    => date("Y-m-d"),  
+				);
+			}
+			else if(empty($_POST['borrower_requests'])){
+				$this->res = array(
+					'isError' => true,
+					'message'   => "Empty borrower_requests",
+					'date'    => date("Y-m-d"),  
+				);
+			}
+			else if(empty($_POST['borrower_id'])){
+				$this->res = array(
+					'isError' => true,
+					'message'   => "Empty borrower_id",
+					'date'    => date("Y-m-d"),  
+				);
+			}
+			else{
+				try{
+					$borrower_requests_id = $_POST['borrower_requests_id'];
+					$borrower_requests = $_POST['borrower_requests'];
+					$borrower_id 	  = $_POST['borrower_id'];
+					
+					$data = array(
+						'borrower_requests'  => $borrower_requests,
+						'date'					=> date("Y-m-d H:i:s"),
+						'borrower_id' 			=> $borrower_id,
+					);
+
+					$this->db->where("borrower_requests_id",$borrower_requests_id);
+					$res = $this->db->update("borrower_requests",$data);
+					if($res){
+						$this->res  = array(
+							'isError'  => false,
+							'message'   => "Success",
+							'data'      => $data,
+							'date'      => date("Y-m-d H:i:s")
+						);
+					}else{
+						$this->res = array(
+							'isError' => true,
+							'message'   => "Error",
+							'date'    => date("Y-m-d"),  
+						);
+					}
+				}catch(Exception $e) {
+					$this->res = array(
+						'isError' => true,
+						'message'   => $e->getMessage(),
+						'date'    => date("Y-m-d"),  
+					);
+				}
+			}
+
+			
+			
+			$this->displayJSON($this->res);
+        }
+		public function approve_request(){
+			$response = array();
+
+			if(empty($_POST['borrower_requests_id'])){
+				$this->res = array(
+					'isError' => true,
+					'message'   => "Empty borrower request id",
+					'date'    => date("Y-m-d"),  
+				);
+			}else{
+				try{
+					$id = $_POST['borrower_requests_id'];
+					$note = $_POST['note'];
+					
+					$data = array(
+						'status_id'=>1,
+						'note'=> $note
+					);
+
+					$this->db->where("borrower_requests_id",$id);
+					$res = $this->db->update("borrower_requests",$data);
+					if($res){
+						$this->res  = array(
+							'isError'  => false,
+							'message'   => "Success",
+							'data'      => $data,
+							'date'      => date("Y-m-d H:i:s")
+						);
+					}else{
+						$this->res = array(
+							'isError' => true,
+							'message'   => "Error",
+							'date'    => date("Y-m-d"),  
+						);
+					}
+				}catch(Exception $e) {
+					$this->res = array(
+						'isError' => true,
+						'message'   => $e->getMessage(),
+						'date'    => date("Y-m-d"),  
+					);
+				}
+			}
+
+			
+			
+			$this->displayJSON($this->res);
+        }
+		public function remove_request(){
+			$response = array();
+
+			if(empty($_POST['borrower_requests_id'])){
+				$this->res = array(
+					'isError' => true,
+					'message'   => "Empty borrower request id",
+					'date'    => date("Y-m-d"),  
+				);
+			}else{
+				try{
+					$id = $_POST['borrower_requests_id'];
+					
+					$data = array(
+						'status_id' => 6
+					);
+
+					$this->db->where("borrower_requests_id",$id);
+					$res = $this->db->update("borrower_requests",$data);
+					if($res){
+						$this->res  = array(
+							'isError'  => false,
+							'message'   => "Success",
+							'data'      => $data,
+							'date'      => date("Y-m-d H:i:s")
+						);
+					}else{
+						$this->res = array(
+							'isError' => true,
+							'message'   => "Error",
+							'date'    => date("Y-m-d"),  
+						);
+					}
+				}catch(Exception $e) {
+					$this->res = array(
+						'isError' => true,
+						'message'   => $e->getMessage(),
+						'date'    => date("Y-m-d"),  
+					);
+				}
+			}
+
+			
+			
+			$this->displayJSON($this->res);
+        }
+		public function disapprove_request(){
+			$response = array();
+
+			if(empty($_POST['borrower_requests_id'])){
+				$this->res = array(
+					'isError' => true,
+					'message'   => "Empty borrower request id",
+					'date'    => date("Y-m-d"),  
+				);
+			}else{
+				try{
+					$id = $_POST['borrower_requests_id'];
+					$note = $_POST['note'];
+					
+					$data = array(
+						'status_id'=> 3,
+						'note' => $note
+					);
+
+					$this->db->where("borrower_requests_id",$id);
+					$res = $this->db->update("borrower_requests",$data);
+					if($res){
+						$this->res  = array(
+							'isError'  => false,
+							'message'   => "Success",
+							'data'      => $data,
+							'date'      => date("Y-m-d H:i:s")
+						);
+					}else{
+						$this->res = array(
+							'isError' => true,
+							'message'   => "Error",
+							'date'    => date("Y-m-d"),  
+						);
+					}
+				}catch(Exception $e) {
+					$this->res = array(
+						'isError' => true,
+						'message'   => $e->getMessage(),
+						'date'    => date("Y-m-d"),  
+					);
+				}
+			}
+
+			
+			
+			$this->displayJSON($this->res);
+        }
+		public function done_request(){
+			$response = array();
+
+			if(empty($_POST['borrower_requests_id'])){
+				$this->res = array(
+					'isError' => true,
+					'message'   => "Empty borrower request id",
+					'date'    => date("Y-m-d"),  
+				);
+			}else{
+				try{
+					$id = $_POST['borrower_requests_id'];
+
+					$data = array(
+						'status_id'=> 9,
+					);
+
+					$this->db->where("borrower_requests_id",$id);
+					$res = $this->db->update("borrower_requests",$data);
+					if($res){
+						$this->res  = array(
+							'isError'  => false,
+							'message'   => "Success",
+							'data'      => $data,
+							'date'      => date("Y-m-d H:i:s")
+						);
+					}else{
+						$this->res = array(
+							'isError' => true,
+							'message'   => "Error",
+							'date'    => date("Y-m-d"),  
+						);
+					}
+				}catch(Exception $e) {
+					$this->res = array(
+						'isError' => true,
+						'message'   => $e->getMessage(),
+						'date'    => date("Y-m-d"),  
+					);
+				}
+			}
+
+			
+			
+			$this->displayJSON($this->res);
+        }
+		public function get_insurance_payment_log(){
+			$response = array();
+			try{
+
+				$sql = "SELECT * FROM insurance_payment_log	
+						WHERE insurance_payment_log.is_active = 1 ";
+
+				if(!empty($_GET['borrower_id'])){
+					$bid = $_GET['borrower_id'];
+					$sql .= "AND insurance_payment_log.borrower_id = '$bid' ";
+				}
+
+				if(!empty($_GET['date_value'])){
+					$date_value = date("Y-m-d",strtotime($_GET['date_value']));
+					$sql .= "AND DATE_FORMAT(insurance_payment_log.date,'%Y-%m') = DATE_FORMAT('$date_value','%Y-%m')";
+				}
+
+
+				$data = $this->db->query($sql)->result();
+				
+				$this->res  = array(
+					'isError'  => false,
+					'message'   => "Success",
+					'data'      => $data,
+					'date'      => date("Y-m-d H:i:s")
+				);
+			}catch(Exception $e) {
+				$this->res = array(
+					'isError' => true,
+					'message'   => $e->getMessage(),
+					'date'    => date("Y-m-d"),  
+				);
+			}
+			$this->displayJSON($this->res);
         }
         public function mysqlTQ($arrQuery) {
 			// print_r($arrQuery);exit;

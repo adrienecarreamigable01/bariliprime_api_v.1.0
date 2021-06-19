@@ -14,7 +14,21 @@
         public function __construct() {
 			parent::__construct();
             date_default_timezone_set('Asia/Manila');
-        }
+		}
+		public function add_capital_def()
+		{
+
+			$data = $this->add_capital_def->add_capital_def();
+			if($data)
+			{
+				$result['message'] = "success";
+			}
+			else
+			{
+				$result['message'] = "error";
+			}
+			echo json_encode($result);
+		}
         public function all()
 		{
             try {
@@ -500,6 +514,96 @@
             }
 
             $this->displayJSON($this->res);
+        }
+		public function update()
+		{
+			$arrayTransaction = array();
+            $capital_id = $this->input->post('capital_id');
+            $due_date = $this->input->post('due_date');
+            $name = $this->input->post('name');
+            if(empty($capital_id)){
+                
+                $this->res = array(
+                    'isError' => true,
+                    'message'   => "Empty Loan Id",
+                    'date'    => date("Y-m-d"),  
+                );
+            }
+            else if(empty($due_date)){
+                
+                $this->res = array(
+                    'isError' => true,
+                    'message'   => "Empty due date",
+                    'date'    => date("Y-m-d"),  
+                );
+            }
+            else if(empty($name)){
+                
+                $this->res = array(
+                    'isError' => true,
+                    'message'   => "Empty name",
+                    'date'    => date("Y-m-d"),  
+                );
+            }
+            else{
+
+                try{
+                    /* update current loan */
+                    $update_loan = array(
+                        'due_date' => $due_date,
+                    );
+                    $this->db->where('loan_add_capital_id',$capital_id);
+                    // $update_loan_res = $this->db->update('loan',$update_loan);
+    
+                    $sql1 = $this->db->set($update_loan)->get_compiled_update('loan_add_capital');
+                    array_push($arrayTransaction,$sql1);
+                        
+    
+					$capital_data = $this->get_single_capital($capital_id)[0];
+					$insert_logs = array(
+						'logs'          => "Update a capital {$capital_id} ".date("Y-m-d H:i:s").' by '. $_POST['name'],
+						'capital_id'    => $capital_id,
+						'loan_id'       => $capital_data->loan_id,
+						'borrower_id'   => $capital_data->borrower_id,
+					);
+
+                    $logs_res =$this->db->set($insert_logs)->get_compiled_insert('logs');
+                    array_push($arrayTransaction,$logs_res);
+    
+                    if(!empty($arrayTransaction)){
+                        $result = array_filter($arrayTransaction);   
+                        $res = $this->mysqlTQ($result);
+                        if($res){
+                            $this->res = array(
+                                'isError' => false,
+                                'message'   => "Successfuly Updated Capital",
+                                'date'    => date("Y-m-d"),  
+                            );
+                        }else{
+                            $this->res = array(
+                                'isError' => true,
+                                'message'   => "Error Updated Capital",
+                                'date'    => date("Y-m-d"),  
+                            );
+                        }
+                    }else{
+                        $this->res = array(
+                            'isError' => true,
+                            'message'   => "Error Updated Capital",
+                            'date'    => date("Y-m-d"),  
+                        );
+                        // return false;exit;
+                    }
+                }catch(Exception $e){
+                    $this->res = array(
+                        'isError' => true,
+                        'message'   => $e->getMessage(),
+                        'date'    => date("Y-m-d"),  
+                    );
+                }
+
+            }
+			$this->displayJSON($this->res);
         }
         public function void()
 		{
